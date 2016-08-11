@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 )
 
 type coordinate struct {
@@ -9,50 +10,40 @@ type coordinate struct {
 	y int
 }
 
-type gameTile struct {
-	alive bool
-}
-
-type updatingTile struct {
-	wasAlive       bool
-	aliveNeighbors int
-	deadNeighbors  int
-}
-
-func (ut *updatingTile) gameTile() *gameTile {
-	if ut.wasAlive {
-		if ut.aliveNeighbors < 2 {
-			return &gameTile{false}
-		}
-		if ut.aliveNeighbors > 3 {
-			return &gameTile{false}
-		}
-		return &gameTile{true}
-	}
-
-	if ut.aliveNeighbors == 3 {
-		return &gameTile{true}
-	}
-
-	return nil
-
-}
-
-type tilePair struct {
-	coord *coordinate
-	tile  *gameTile
-}
-
 type game struct {
 	board map[coordinate]struct{}
 }
 
-func NewGame(tiles ...coordinate) *game {
+func NewGame(coords ...coordinate) *game {
 	game := &game{board: make(map[coordinate]struct{})}
-	for _, coord := range tiles {
+	for _, coord := range coords {
 		game.board[coord] = struct{}{}
 	}
 	return game
+}
+
+type cellUpdate struct {
+	aliveNeighbors int
+	wasAlive       bool
+}
+
+func (cu *cellUpdate) nowAlive() bool {
+	if cu.wasAlive {
+		if cu.aliveNeighbors < 2 {
+			return false
+		}
+		if cu.aliveNeighbors > 3 {
+			return false
+		}
+
+		return true
+	}
+
+	if cu.aliveNeighbors == 3 {
+		return true
+	}
+
+	return false
 }
 
 func (c coordinate) neighbors() []coordinate {
@@ -68,33 +59,76 @@ func (c coordinate) neighbors() []coordinate {
 	return neighbors
 }
 
+func (g *game) isAlive(x, y int) bool {
+	_, ok := g.board[coordinate{x: x, y: y}]
+	return ok
+}
+
 func (g *game) tick() {
-	nextGen := make(map[coordinate]*updatingTile)
-	for key, val := range g.board {
-		neighbors := key.neighbors()
-		for _, neighbor := range neighbors {
-			ut, ok := nextGen[neighbor]
+	status := make(map[coordinate]*cellUpdate)
+	for coord := range g.board {
+		if _, ok := status[coord]; !ok {
+			status[coord] = &cellUpdate{wasAlive: true}
+		}
+		for _, neighbor := range coord.neighbors() {
+			cu, ok := status[neighbor]
 			if !ok {
-				ut = &updatingTile{}
-				nextGen[neighbor] = ut
-				ival, ok := g.board[neighbor]
-				if ok && ival.alive {
-					ut.wasAlive = true
-				}
+				cu = &cellUpdate{}
+				status[neighbor] = cu
+				_, ok = g.board[neighbor]
+				cu.wasAlive = ok
 			}
-			if val.alive {
-				ut.aliveNeighbors++
-			} else {
-				ut.deadNeighbors++
-			}
+			cu.aliveNeighbors++
 		}
 	}
 
-	for key, val := range nextGen {
-		// Temp
+	g.board = make(map[coordinate]struct{})
+	for coord, cu := range status {
+		if cu.nowAlive() {
+			g.board[coord] = struct{}{}
+		}
+	}
+}
+
+func (g *game) display() {
+	var maxX, minX, maxY, minY int
+	for coord := range g.board {
+		if coord.x < minX {
+			minX = coord.x
+		}
+		if coord.x > maxX {
+			maxX = coord.x
+		}
+		if coord.y < minY {
+			minY = coord.y
+		}
+		if coord.y > maxY {
+			maxY = coord.y
+		}
+	}
+
+	for y := maxY; y >= minY; y-- {
+		for x := minX; x <= maxX; x++ {
+			if g.isAlive(x, y) {
+				fmt.Printf("X")
+			} else {
+				fmt.Printf("")
+			}
+		}
+		fmt.Println("")
 	}
 }
 
 func main() {
-	fmt.Println("Testing")
+	game := NewGame(
+		coordinate{x: 0, y: 0},
+		coordinate{x: 1, y: 0},
+		coordinate{x: 2, y: 0},
+	)
+	for i := 0; i < 10; i++ {
+		game.display()
+		time.Sleep(time.Second)
+		game.tick()
+		fmt.Println("==================")
+	}
 }
